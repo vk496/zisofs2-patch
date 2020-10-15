@@ -1,0 +1,8 @@
+# .travis.yml
+install:
+  - git clone --depth 1 https://github.com/torvalds/linux linux
+
+script:
+  - cp zisofs2.patch linux/
+  - cd linux
+  - git apply --reject zisofs2.patch
