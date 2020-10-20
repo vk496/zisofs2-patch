@@ -1463,6 +1463,9 @@ static int isofs_read_inode(struct inode *inode, int relocated)
 		inode->i_fop = &generic_ro_fops;
 		switch (ei->i_file_format) {
 #ifdef CONFIG_ZISOFS
+#ifdef CONFIG_ZISOFS2
+		case isofs_file_zisofs2:
+#endif
 		case isofs_file_compressed:
 			inode->i_data.a_ops = &zisofs_aops;
 			break;

@@ -238,12 +238,22 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
 	bh = isofs_bread(inode, blockptr >> blkbits);
 	if (!bh)
 		return -EIO;
-	block_start = le32_to_cpu(*(__le32 *)
-				(bh->b_data + (blockptr & (blksize - 1))));
+
+	if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
+		block_start = le32_to_cpu(*(__le32 *)
+					(bh->b_data + (blockptr & (blksize - 1))));
+	} else {
+		block_start = le64_to_cpu(*(__le64 *)
+					(bh->b_data + (blockptr & (blksize - 1))));
+	}
 
 	while (cstart_block < cend_block && pcount > 0) {
 		/* Load end of the compressed block in the file */
-		blockptr += 4;
+		if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
+			blockptr += 4;
+		} else {
+			blockptr += 8;
+		}
 		/* Traversed to next block? */
 		if (!(blockptr & (blksize - 1))) {
 			brelse(bh);
@@ -252,8 +262,15 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
 			if (!bh)
 				return -EIO;
 		}
-		block_end = le32_to_cpu(*(__le32 *)
-				(bh->b_data + (blockptr & (blksize - 1))));
+
+		if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
+			block_end = le32_to_cpu(*(__le32 *)
+					(bh->b_data + (blockptr & (blksize - 1))));
+		} else {
+			block_end = le64_to_cpu(*(__le64 *)
+					(bh->b_data + (blockptr & (blksize - 1))));
+		}
+
 		if (block_start > block_end) {
 			brelse(bh);
 			return -EIO;

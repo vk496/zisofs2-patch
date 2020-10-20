@@ -540,39 +540,46 @@ repeat:
 			break;
 #ifdef CONFIG_ZISOFS
 		case SIG('Z', 'F'): {
-			int algo;
+			int algo, block_shift;
 
 			if (ISOFS_SB(inode->i_sb)->s_nocompress)
 				break;
 			algo = isonum_721(rr->u.ZF.algorithm);
-			if (algo == SIG('p', 'z')) {
-				int block_shift =
-					isonum_711(&rr->u.ZF.parms[1]);
-				if (block_shift > 17) {
-					printk(KERN_WARNING "isofs: "
-						"Can't handle ZF block "
-						"size of 2^%d\n",
-						block_shift);
-				} else {
-					/*
-					 * Note: we don't change
-					 * i_blocks here
-					 */
-					ISOFS_I(inode)->i_file_format =
-						isofs_file_compressed;
-					/*
-					 * Parameters to compression
-					 * algorithm (header size,
-					 * block size)
-					 */
-					ISOFS_I(inode)->i_format_parm[0] =
-						isonum_711(&rr->u.ZF.parms[0]);
-					ISOFS_I(inode)->i_format_parm[1] =
-						isonum_711(&rr->u.ZF.parms[1]);
-					inode->i_size =
-					    isonum_733(rr->u.ZF.
-						       real_size);
-				}
+			block_shift = isonum_711(&rr->u.ZF.parms[1]);
+
+			if (block_shift > 20 || block_shift < 15) {
+				printk(KERN_WARNING "isofs2: "
+					"Can't handle ZF block "
+					"size of 2^%d\n",
+					block_shift);
+			} else if (algo == SIG('p', 'z')) {
+				/* pz is reserved for zisofs only */
+				/*
+					* Note: we don't change
+					* i_blocks here
+					*/
+				ISOFS_I(inode)->i_file_format =
+					isofs_file_compressed;
+				/*
+					* Parameters to compression
+					* algorithm (header size,
+					* block size)
+					*/
+				ISOFS_I(inode)->i_format_parm[0] =
+					isonum_711(&rr->u.ZF.parms[0]);
+				ISOFS_I(inode)->i_format_parm[1] =
+					block_shift;
+				inode->i_size =
+					isonum_733(rr->u.ZF.
+							real_size);
+#ifdef CONFIG_ZISOFS2
+			} else if (algo == SIG('P', 'Z')) {
+				ISOFS_I(inode)->i_file_format = isofs_file_zisofs2;
+				ISOFS_I(inode)->i_format_parm[0] =
+					isonum_711(&rr->u.ZF.parms[0]);
+				ISOFS_I(inode)->i_format_parm[1] = block_shift;
+				inode->i_size = isonum_uint64(rr->u.ZF.real_size);
+#endif
 			} else {
 				printk(KERN_WARNING
 				       "isofs: Unknown ZF compression "

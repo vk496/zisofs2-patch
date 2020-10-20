@@ -38,3 +38,13 @@ config ZISOFS
 	  <http://www.kernel.org/pub/linux/utils/fs/zisofs/> for the tools
 	  necessary to create such a filesystem.  Say Y here if you want to be
 	  able to read such compressed CD-ROMs.
+
+config ZISOFS2
+	bool "Extended support"
+	depends on ZISOFS
+	help
+	  The zisofs2 make possible to handle files bigger than
+	  4 GiB and extend it with more compressors. See
+	  <https://github.com/vk496/zisofs2-tools/> for the tools
+	  necessary to create such a filesystem.  Say Y here if you want to be
+	  able to read such compressed CD-ROMs.

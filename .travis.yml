@@ -1,8 +1,37 @@
 # .travis.yml
+language: bash
+
+
+addons:
+  apt:
+    packages:
+      - build-essential libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
+      - linux-headers-$(uname -r)
+
+cache:
+  directories:
+    - linux
+
+before_install:
+  - test -d linux || git clone --depth 1 https://github.com/torvalds/linux linux
+
 install:
-  - git clone --depth 1 https://github.com/torvalds/linux linux
+  - ( cd linux; git pull )
+
+before_script:
+  - rm -rf linux/fs/isofs
+  - cp -r fs/isofs linux/fs/
+  - cp /boot/config-$(uname -r) linux/.config
 
 script:
-  - cp zisofs2.patch linux/
   - cd linux
-  - git apply --reject zisofs2.patch
+  - git diff
+  - yes "" | make modules_prepare
+  - make M=fs/isofs
+
+before_cache:
+  - cd linux
+  - pwd
+  - git reset --hard
+  - git clean -dfx
+  - git status

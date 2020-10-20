@@ -9,6 +9,7 @@ enum isofs_file_format {
 	isofs_file_normal = 0,
 	isofs_file_sparse = 1,
 	isofs_file_compressed = 2,
+	isofs_file_zisofs2 = 3,
 };
 	
 /*
@@ -106,6 +107,10 @@ static inline unsigned int isonum_733(u8 *p)
 {
 	/* Ignore bigendian datum due to broken mastering programs */
 	return get_unaligned_le32(p);
+}
+static inline unsigned int isonum_uint64(u8 *p)
+{
+	return get_unaligned_le64(p);
 }
 extern int iso_date(u8 *, int);
 

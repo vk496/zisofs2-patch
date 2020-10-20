@@ -76,9 +76,9 @@ struct RR_TF_s {
 
 /* Linux-specific extension for transparent decompression */
 struct RR_ZF_s {
-	__u8 algorithm[2];
-	__u8 parms[2];
-	__u8 real_size[8];
+	__u8 algorithm[2]; /* BP 5 - BP 6 */
+	__u8 parms[2]; /* BP 7, BP 8 */
+	__u8 real_size[8]; /* BP 9 - BP 16 */
 };
 
 /*
