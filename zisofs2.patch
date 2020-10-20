@@ -1,8 +1,8 @@
 diff --git a/fs/isofs/Kconfig b/fs/isofs/Kconfig
-index 08ffd37b9bb8..424fbc15ecea 100644
+index 08ffd37b9bb8..22dcb4ed61dc 100644
 --- a/fs/isofs/Kconfig
 +++ b/fs/isofs/Kconfig
-@@ -38,3 +38,41 @@ config ZISOFS
+@@ -38,3 +38,13 @@ config ZISOFS
  	  <http://www.kernel.org/pub/linux/utils/fs/zisofs/> for the tools
  	  necessary to create such a filesystem.  Say Y here if you want to be
  	  able to read such compressed CD-ROMs.
@@ -11,52 +11,74 @@ index 08ffd37b9bb8..424fbc15ecea 100644
 +	bool "Extended support"
 +	depends on ZISOFS
 +	help
-+	  The zisofs2 extension made possible to handle files bigger than
-+	  4 GiB and more compressors. See
++	  The zisofs2 make possible to handle files bigger than
++	  4 GiB and extend it with more compressors. See
 +	  <https://github.com/vk496/zisofs2-tools/> for the tools
 +	  necessary to create such a filesystem.  Say Y here if you want to be
 +	  able to read such compressed CD-ROMs.
-+
-+config ZISOFS2_XZ
-+	bool "XZ support"
-+	depends on ZISOFS2
-+	select DECOMPRESS_XZ
-+	help
-+	  Support compressed CD-ROM with XZ
-+
-+config ZISOFS2_LZ4
-+	bool "LZ4 support"
-+	depends on ZISOFS2
-+	select DECOMPRESS_LZ4
-+	help
-+	  Support compressed CD-ROM with LZ4
-+
-+config ZISOFS2_ZSTD
-+	bool "ZSTD support"
-+	depends on ZISOFS2
-+	select DECOMPRESS_ZSTD
-+	help
-+	  Support compressed CD-ROM with ZSTD
-+
-+config ZISOFS2_BZIP2
-+	bool "BZIP2 support"
-+	depends on ZISOFS2
-+	select DECOMPRESS_BZIP2
-+	help
-+	  Support compressed CD-ROM with BZIP2
 \ No newline at end of file
+diff --git a/fs/isofs/compress.c b/fs/isofs/compress.c
+index bc12ac7e2312..5893388a296d 100644
+--- a/fs/isofs/compress.c
++++ b/fs/isofs/compress.c
+@@ -238,12 +238,22 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
+ 	bh = isofs_bread(inode, blockptr >> blkbits);
+ 	if (!bh)
+ 		return -EIO;
+-	block_start = le32_to_cpu(*(__le32 *)
+-				(bh->b_data + (blockptr & (blksize - 1))));
++
++	if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
++		block_start = le32_to_cpu(*(__le32 *)
++					(bh->b_data + (blockptr & (blksize - 1))));
++	} else {
++		block_start = le64_to_cpu(*(__le64 *)
++					(bh->b_data + (blockptr & (blksize - 1))));
++	}
+ 
+ 	while (cstart_block < cend_block && pcount > 0) {
+ 		/* Load end of the compressed block in the file */
+-		blockptr += 4;
++		if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
++			blockptr += 4;
++		} else {
++			blockptr += 8;
++		}
+ 		/* Traversed to next block? */
+ 		if (!(blockptr & (blksize - 1))) {
+ 			brelse(bh);
+@@ -252,8 +262,15 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
+ 			if (!bh)
+ 				return -EIO;
+ 		}
+-		block_end = le32_to_cpu(*(__le32 *)
+-				(bh->b_data + (blockptr & (blksize - 1))));
++
++		if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
++			block_end = le32_to_cpu(*(__le32 *)
++					(bh->b_data + (blockptr & (blksize - 1))));
++		} else {
++			block_end = le64_to_cpu(*(__le64 *)
++					(bh->b_data + (blockptr & (blksize - 1))));
++		}
++
+ 		if (block_start > block_end) {
+ 			brelse(bh);
+ 			return -EIO;
 diff --git a/fs/isofs/inode.c b/fs/isofs/inode.c
-index 78f5c96c76f3..3b8ecca62906 100644
+index 78f5c96c76f3..e2c19ea5c872 100644
 --- a/fs/isofs/inode.c
 +++ b/fs/isofs/inode.c
-@@ -1464,6 +1464,7 @@ static int isofs_read_inode(struct inode *inode, int relocated)
+@@ -1463,6 +1463,9 @@ static int isofs_read_inode(struct inode *inode, int relocated)
+ 		inode->i_fop = &generic_ro_fops;
  		switch (ei->i_file_format) {
  #ifdef CONFIG_ZISOFS
- 		case isofs_file_compressed:
++#ifdef CONFIG_ZISOFS2
 +		case isofs_file_zisofs2:
++#endif
+ 		case isofs_file_compressed:
  			inode->i_data.a_ops = &zisofs_aops;
  			break;
- #endif
 diff --git a/fs/isofs/isofs.h b/fs/isofs/isofs.h
 index 055ec6c586f7..4078cefcfe20 100644
 --- a/fs/isofs/isofs.h
@@ -81,10 +103,10 @@ index 055ec6c586f7..4078cefcfe20 100644
  
  struct inode;		/* To make gcc happy */
 diff --git a/fs/isofs/rock.c b/fs/isofs/rock.c
-index 94ef92fe806c..7230ca5b7acd 100644
+index 94ef92fe806c..95e841a79c5a 100644
 --- a/fs/isofs/rock.c
 +++ b/fs/isofs/rock.c
-@@ -540,14 +540,24 @@ parse_rock_ridge_inode_internal(struct iso_directory_record *de,
+@@ -540,39 +540,46 @@ parse_rock_ridge_inode_internal(struct iso_directory_record *de,
  			break;
  #ifdef CONFIG_ZISOFS
  		case SIG('Z', 'F'): {
@@ -93,92 +115,73 @@ index 94ef92fe806c..7230ca5b7acd 100644
  
  			if (ISOFS_SB(inode->i_sb)->s_nocompress)
  				break;
-+
  			algo = isonum_721(rr->u.ZF.algorithm);
+-			if (algo == SIG('p', 'z')) {
+-				int block_shift =
+-					isonum_711(&rr->u.ZF.parms[1]);
+-				if (block_shift > 17) {
+-					printk(KERN_WARNING "isofs: "
+-						"Can't handle ZF block "
+-						"size of 2^%d\n",
+-						block_shift);
+-				} else {
+-					/*
+-					 * Note: we don't change
+-					 * i_blocks here
+-					 */
+-					ISOFS_I(inode)->i_file_format =
+-						isofs_file_compressed;
+-					/*
+-					 * Parameters to compression
+-					 * algorithm (header size,
+-					 * block size)
+-					 */
+-					ISOFS_I(inode)->i_format_parm[0] =
+-						isonum_711(&rr->u.ZF.parms[0]);
+-					ISOFS_I(inode)->i_format_parm[1] =
+-						isonum_711(&rr->u.ZF.parms[1]);
+-					inode->i_size =
+-					    isonum_733(rr->u.ZF.
+-						       real_size);
+-				}
 +			block_shift = isonum_711(&rr->u.ZF.parms[1]);
 +
 +			if (block_shift > 20 || block_shift < 15) {
-+				printk(KERN_WARNING "isofs: "
++				printk(KERN_WARNING "isofs2: "
 +					"Can't handle ZF block "
 +					"size of 2^%d\n",
 +					block_shift);
-+				goto eio;
-+			}
-+
- 			if (algo == SIG('p', 'z')) {
--				int block_shift =
--					isonum_711(&rr->u.ZF.parms[1]);
++			} else if (algo == SIG('p', 'z')) {
 +				/* pz is reserved for zisofs only */
- 				if (block_shift > 17) {
- 					printk(KERN_WARNING "isofs: "
- 						"Can't handle ZF block "
-@@ -568,17 +578,60 @@ parse_rock_ridge_inode_internal(struct iso_directory_record *de,
- 					ISOFS_I(inode)->i_format_parm[0] =
- 						isonum_711(&rr->u.ZF.parms[0]);
- 					ISOFS_I(inode)->i_format_parm[1] =
--						isonum_711(&rr->u.ZF.parms[1]);
-+						block_shift;
- 					inode->i_size =
- 					    isonum_733(rr->u.ZF.
- 						       real_size);
- 				}
- 			} else {
--				printk(KERN_WARNING
--				       "isofs: Unknown ZF compression "
--						"algorithm: %c%c\n",
--				       rr->u.ZF.algorithm[0],
--				       rr->u.ZF.algorithm[1]);
-+#ifdef CONFIG_ZISOFS2
-+				/* zisofs2 */
-+				int old_size;
-+
-+				//TODO: Should this definitions be outside?
-+				ISOFS_I(inode)->i_file_format = isofs_file_zisofs2;
-+				/* Header size*/
++				/*
++					* Note: we don't change
++					* i_blocks here
++					*/
++				ISOFS_I(inode)->i_file_format =
++					isofs_file_compressed;
++				/*
++					* Parameters to compression
++					* algorithm (header size,
++					* block size)
++					*/
 +				ISOFS_I(inode)->i_format_parm[0] =
-+						isonum_711(&rr->u.ZF.parms[0]);
-+				/* Block size*/
++					isonum_711(&rr->u.ZF.parms[0]);
 +				ISOFS_I(inode)->i_format_parm[1] =
-+						block_shift;
-+
-+
-+				old_size = inode->i_size;
-+				inode->i_size = isonum_uint64(rr->u.ZF.real_size);
-+				
-+				if (algo == SIG('P', 'Z')) {
-+				} 
-+	#ifdef CONFIG_ZISOFS2_XZ
-+				else if (algo == SIG('X', 'Z')) {
-+				} 
-+	#endif
-+	#ifdef CONFIG_ZISOFS2_LZ4
-+				else if (algo == SIG('L', '4')) {
-+				} 
-+	#endif
-+	#ifdef CONFIG_ZISOFS2_XZ
-+				else if (algo == SIG('Z', 'D')) {
-+				} 
-+	#endif
-+	#ifdef CONFIG_ZISOFS2_XZ
-+				else if (algo == SIG('B', '2')) {
-+				} 
-+	#endif
-+				else {
-+					/* Not recognized algorithm. Resetting... */
-+					ISOFS_I(inode)->i_file_format = isofs_file_normal;
-+					inode->i_size = old_size;
-+#endif
-+					printk(KERN_WARNING
-+						"isofs: Unknown ZF compression "
-+							"algorithm: %c%c\n",
-+						rr->u.ZF.algorithm[0],
-+						rr->u.ZF.algorithm[1]);
++					block_shift;
++				inode->i_size =
++					isonum_733(rr->u.ZF.
++							real_size);
 +#ifdef CONFIG_ZISOFS2
-+				}
++			} else if (algo == SIG('P', 'Z')) {
++				ISOFS_I(inode)->i_file_format = isofs_file_zisofs2;
++				ISOFS_I(inode)->i_format_parm[0] =
++					isonum_711(&rr->u.ZF.parms[0]);
++				ISOFS_I(inode)->i_format_parm[1] = block_shift;
++				inode->i_size = isonum_uint64(rr->u.ZF.real_size);
 +#endif
- 			}
- 			break;
- 		}
+ 			} else {
+ 				printk(KERN_WARNING
+ 				       "isofs: Unknown ZF compression "
 diff --git a/fs/isofs/rock.h b/fs/isofs/rock.h
 index 1558cf22ef8a..9d411d472704 100644
 --- a/fs/isofs/rock.h
