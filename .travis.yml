@@ -8,10 +8,6 @@ addons:
       - build-essential libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
       - linux-headers-$(uname -r)
 
-cache:
-  directories:
-    - linux
-
 before_install:
   - test -d linux || git clone --depth 1 https://github.com/torvalds/linux linux
 
@@ -28,10 +24,3 @@ script:
   - git diff
   - yes "" | make modules_prepare
   - make M=fs/isofs
-
-before_cache:
-  - cd linux
-  - pwd
-  - git reset --hard
-  - git clean -dfx
-  - git status
