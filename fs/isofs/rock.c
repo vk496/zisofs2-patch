@@ -539,6 +539,9 @@ repeat:
 			iput(reloc);
 			break;
 #ifdef CONFIG_ZISOFS
+#ifdef CONFIG_ZISOFS2
+		case SIG('Z', '2'):
+#endif
 		case SIG('Z', 'F'): {
 			int algo, block_shift;
 

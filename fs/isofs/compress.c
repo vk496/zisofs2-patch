@@ -232,13 +232,17 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
 		((cstart_block << zisofs_block_shift) & PAGE_MASK));
 
 	/* Find the pointer to this specific chunk */
-	/* Note: we're not using isonum_731() here because the data is known aligned */
+	/* Note: The data are properly aligned to 64 bit by header_size */
 	/* Note: header_size is in 32-bit words (4 bytes) */
-	blockptr = (header_size + cstart_block) << 2;
+	if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
+		blockptr = (header_size + cstart_block) << 2;
+	} else {
+		blockptr = (header_size << 2) + (cstart_block << 3);
+	}
+	
 	bh = isofs_bread(inode, blockptr >> blkbits);
 	if (!bh)
 		return -EIO;
-
 	if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
 		block_start = le32_to_cpu(*(__le32 *)
 					(bh->b_data + (blockptr & (blksize - 1))));
