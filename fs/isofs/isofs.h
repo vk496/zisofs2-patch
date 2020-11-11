@@ -108,10 +108,12 @@ static inline unsigned int isonum_733(u8 *p)
 	/* Ignore bigendian datum due to broken mastering programs */
 	return get_unaligned_le32(p);
 }
-static inline unsigned int isonum_uint64(u8 *p)
+
+static inline u64 isonum_uint64(u8 *p)
 {
 	return get_unaligned_le64(p);
 }
+
 extern int iso_date(u8 *, int);
 
 struct inode;		/* To make gcc happy */

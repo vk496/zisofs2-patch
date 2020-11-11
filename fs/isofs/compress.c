@@ -205,7 +205,7 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
 	loff_t block_start, block_end;
 	unsigned int header_size = ISOFS_I(inode)->i_format_parm[0];
 	unsigned int zisofs_block_shift = ISOFS_I(inode)->i_format_parm[1];
-	unsigned int blockptr;
+	loff_t blockptr;
 	loff_t poffset = 0;
 	blkcnt_t cstart_block, cend_block;
 	struct buffer_head *bh;
@@ -234,12 +234,10 @@ static int zisofs_fill_pages(struct inode *inode, int full_page, int pcount,
 	/* Find the pointer to this specific chunk */
 	/* Note: The data are properly aligned to 64 bit by header_size */
 	/* Note: header_size is in 32-bit words (4 bytes) */
-	if (ISOFS_I(inode)->i_file_format == isofs_file_compressed) {
+	if (ISOFS_I(inode)->i_file_format == isofs_file_compressed)
 		blockptr = (header_size + cstart_block) << 2;
-	} else {
+	else
 		blockptr = (header_size << 2) + (cstart_block << 3);
-	}
-	
 	bh = isofs_bread(inode, blockptr >> blkbits);
 	if (!bh)
 		return -EIO;
